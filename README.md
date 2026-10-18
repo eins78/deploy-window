@@ -41,6 +41,23 @@ Licence: Apache-2.0 ([`LICENSE`](LICENSE), [`NOTICE`](NOTICE)). Security reports
 
 ## Commands
 
+The arguments of one full `start`:
+
+```text
+/deploy start 1h30m PROD api,web -- release 2.4
+│       │     │     │    │       │  │
+│       │     │     │    │       │  └─ note: optional; never parsed; default limit 300 characters
+│       │     │     │    │       └─ separator: -- or an em/en dash; the note follows
+│       │     │     │    └─ targets: optional; commas or spaces; none named = all (select: all)
+│       │     │     └─ environment: optional with one env or a default_environment
+│       │     └─ duration: 30m, 2h or 1h30m; required for start; capped per channel
+│       └─ subcommand: start, end, list or help (empty text = help)
+└─ slash command; its name is set in slack.command
+```
+
+Before `--` the order of the words is free. `end` takes the same words without a duration and ends
+the matching window early; `list` and `help` take no arguments.
+
 | Command | Effect |
 |---|---|
 | `/deploy start 30m` | Window over all targets of the channel, default environment |
