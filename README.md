@@ -78,8 +78,8 @@ The command name is configurable (`slack.command`). Another app in the workspace
 
 Requirements: Node 22 or later, pnpm, a Grafana with Grafana-managed alerting (the API calls follow
 the behaviour verified on Grafana 13, see the specification, section 14), and a Slack workspace where
-you can create an app. Version 0.1.0 has passed its unit tests but has not yet run against a live
-workspace and Grafana (see "Test status").
+you can create an app. Version 0.1.0 has passed its unit tests and one manual run of the live tests
+(see "Test status").
 
 ```sh
 pnpm install --frozen-lockfile
@@ -93,7 +93,8 @@ DWA_CONFIG=/etc/deploy-window/config.yaml pnpm start check-config
 2. Create a Grafana service account with `alert.instances:read`, `alert.instances:create` and
    `alert.instances:write`, and a token with an expiry.
 3. Put the three tokens into the environment (see [`deploy/env.example`](deploy/env.example)) and
-   run `pnpm start` (or install [`deploy/deploy-window.service.example`](deploy/deploy-window.service.example)).
+   run `pnpm start` (or install [`deploy/deploy-window.service.example`](deploy/deploy-window.service.example),
+   or run the container image `ghcr.io/eins78/deploy-window`, see "Container" in the operations guide).
 
 The full steps, token rotation, upgrades and the manual fallback are in
 [`docs/operations.md`](docs/operations.md).

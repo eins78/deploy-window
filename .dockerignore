@@ -1,0 +1,13 @@
+.git
+.github
+.changeset
+node_modules
+dist
+test
+docs
+deploy
+scripts
+*.env
+.env*
+config.yaml
+*.log

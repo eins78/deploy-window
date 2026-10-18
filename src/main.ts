@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // deploy-window: run the app, or check a configuration file.
 import { execFile } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { LogLevel, SocketModeClient } from '@slack/socket-mode';
 import { WebClient } from '@slack/web-api';
@@ -9,6 +10,7 @@ import { DeployWindowApp } from './commands.js';
 import { type Config, ConfigInvalid, configPath, loadConfigFile, secretEnvNames } from './config.js';
 import { reloadConfig } from './reload.js';
 import { GrafanaClient } from './grafana.js';
+import { HealthFile } from './health.js';
 import { createLogger, type Logger, redact } from './log.js';
 import { newWindowId, parseMarkerKey } from './marker.js';
 import { ChannelLocks, Dedupe, RateLimit } from './memory.js';
@@ -202,6 +204,23 @@ async function run(): Promise<void> {
 
   let watchdog: NodeJS.Timeout | undefined;
   const usec = Number(process.env.WATCHDOG_USEC ?? '0');
+  // DWA-OPS-007: a file whose age a container health check reads.
+  const healthPath = process.env.DWA_HEALTH_FILE;
+  let healthFailed = false;
+  const health = healthPath === undefined || healthPath === ''
+    ? undefined
+    : new HealthFile({
+        touch: () => {
+          try {
+            writeFileSync(healthPath, `${new Date().toISOString()}\n`);
+          } catch (e) {
+            if (!healthFailed) log.log('warning', 'health_file_failed', { path: healthPath, error: String(e) });
+            healthFailed = true;
+          }
+        },
+        setInterval: (fn, ms) => setInterval(fn, ms),
+        clearInterval: (h) => { clearInterval(h as NodeJS.Timeout); },
+      });
   const sockets = Array.from(
     { length: CONNECTIONS },
     () => new SocketModeClient({ appToken, logger: slackLogger(log, 'socket-mode') }),
@@ -226,6 +245,7 @@ async function run(): Promise<void> {
         clearInterval(watchdog);
         watchdog = undefined;
       }
+      health?.onConnectedChange(open);
     },
   });
   for (const s of sockets) await s.start();
@@ -234,6 +254,7 @@ async function run(): Promise<void> {
   const shutdown = (signal: string) => {
     log.log('info', 'stopping', { signal });
     if (watchdog !== undefined) clearInterval(watchdog);
+    health?.stop();
     // Stop taking commands, then give running ones up to 20 s to finish.
     void wiring
       .stop()
