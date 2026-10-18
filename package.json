@@ -1,6 +1,6 @@
 {
   "name": "deploy-window",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -19,7 +19,8 @@
     "lint": "eslint .",
     "test": "node --import tsx --test test/*.test.ts",
     "lint:tokens": "node --import tsx scripts/lint-tokens.ts",
-    "check:licenses": "node --import tsx scripts/check-licenses.ts"
+    "check:licenses": "node --import tsx scripts/check-licenses.ts",
+    "changeset": "changeset"
   },
   "dependencies": {
     "@slack/socket-mode": "2.0.7",
@@ -28,6 +29,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@eslint/js": "^10.0.1",
     "@total-typescript/tsconfig": "^1.0.4",
     "@types/node": "^22.20.5",
