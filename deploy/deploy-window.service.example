@@ -15,7 +15,9 @@ ExecReload=/bin/kill -HUP $MAINPID
 Environment=DWA_CONFIG=/etc/deploy-window/config.yaml
 EnvironmentFile=/etc/deploy-window/env
 Restart=always
-RestartSec=5
+RestartSec=10
+# Exit status 2 is a configuration error; restarting cannot fix it.
+RestartPreventExitStatus=2
 
 DynamicUser=yes
 NoNewPrivileges=yes

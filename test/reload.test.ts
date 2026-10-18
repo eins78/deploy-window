@@ -15,6 +15,13 @@ void describe('SIGHUP reload (T-CFG-4)', () => {
     assert.equal(next.limits.maxMessageLength, 100);
     assert.match(lines[0] ?? '', /config_reloaded/);
   });
+  void it('a change that needs a restart is refused as a whole', () => {
+    const lines: string[] = [];
+    const next = reloadConfig('x', current, createLogger({ write: (l) => lines.push(l) }), () =>
+      parseConfigText(FIXTURE_YAML.replace('max_message_length: 300', 'max_message_length: 300, instance: other')));
+    assert.equal(next, current);
+    assert.match(lines[0] ?? '', /config_reload_needs_restart.*limits\.instance/);
+  });
   void it('a bad file keeps the old one and logs the errors', () => {
     const lines: string[] = [];
     const next = reloadConfig('x', current, createLogger({ write: (l) => lines.push(l) }), () => {

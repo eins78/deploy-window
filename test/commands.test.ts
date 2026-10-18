@@ -571,3 +571,34 @@ void describe('audit and progress', () => {
     assert.equal(h.slack.posts.length, 0);
   });
 });
+
+void describe('create retry without proof (review finding)', () => {
+  void it('a create timeout followed by a failing find does not create again', async () => {
+    const h = makeHarness({ config: yamlWith((d) => { d.channels[CH_A].on_partial = 'keep'; }) });
+    h.grafana.onCreate = () => 'accept-then-timeout';
+    const list = h.grafana.listSilences.bind(h.grafana);
+    let calls = 0;
+    h.grafana.listSilences = () => {
+      calls++;
+      // the conflict find works; the find after the failed create does not
+      return calls === 1 ? list() : Promise.reject(new GrafanaError('timeout', 'flapping'));
+    };
+    await h.run('start 30m INTEG api');
+    assert.equal(h.grafana.creates.length, 1);
+    assert.equal(h.grafana.silences.length, 1);
+  });
+
+  void it('drain waits for a running command', async () => {
+    const h = makeHarness();
+    let release: () => void = () => undefined;
+    h.grafana.listSilences = () => new Promise((r) => { release = () => { r([]); }; });
+    let done = false;
+    void h.run('list').then(() => { done = true; });
+    const drained = h.app.drain(1000);
+    await new Promise((r) => setImmediate(r));
+    assert.equal(done, false);
+    release();
+    await drained;
+    assert.equal(done, true);
+  });
+});

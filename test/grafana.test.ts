@@ -113,3 +113,16 @@ void describe('Grafana client', () => {
     assert.equal(calls[0]?.init.redirect, 'error');
   });
 });
+
+void describe('unreadable answers (review finding)', () => {
+  void it('a 202 without a readable id is retryable, so the caller finds before it creates again', async () => {
+    const { f } = fakeFetch([new Response('not json', { status: 202 })]);
+    await assert.rejects(client(f).createSilence({ matchers: [], startsAt: new Date(), endsAt: new Date(), createdBy: '', comment: '' }), (e: GrafanaError) => e.retryable);
+  });
+  void it('a body that cannot be read is a GrafanaError and is retried', async () => {
+    const broken = new Response(new ReadableStream({ start(c) { c.error(new Error('reset')); } }), { status: 200 });
+    const { f, calls } = fakeFetch([broken, json(200, [])]);
+    assert.deepEqual(await client(f).listSilences(), []);
+    assert.equal(calls.length, 2);
+  });
+});

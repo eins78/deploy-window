@@ -59,8 +59,10 @@ The command name is configurable (`slack.command`). Another app in the workspace
 
 ## Quick start
 
-Requirements: Node 22 or later, pnpm, a Grafana with alerting (tested against Grafana 13), a Slack
-workspace where you can create an app.
+Requirements: Node 22 or later, pnpm, a Grafana with Grafana-managed alerting (the API calls follow
+the behaviour verified on Grafana 13, see the specification, section 14), and a Slack workspace where
+you can create an app. Version 0.1.0 has passed its unit tests but has not yet run against a live
+workspace and Grafana (see "Test status").
 
 ```sh
 pnpm install --frozen-lockfile

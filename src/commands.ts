@@ -68,11 +68,25 @@ function failureOf(e: unknown): FailureClass {
 
 export class DeployWindowApp {
   private readonly reminders = new Map<string, unknown>();
+  private readonly running = new Set<Promise<void>>();
 
   constructor(private readonly d: Deps) {}
 
   /** Entry point for one slash command, called after the envelope was acknowledged. */
-  async handle(cmd: SlashCommand): Promise<void> {
+  handle(cmd: SlashCommand): Promise<void> {
+    const p = this.handleOne(cmd);
+    this.running.add(p);
+    void p.finally(() => this.running.delete(p));
+    return p;
+  }
+
+  /** Waits for running commands (on shutdown), at most `ms`. */
+  async drain(ms: number): Promise<void> {
+    if (this.running.size === 0) return;
+    await Promise.race([Promise.allSettled([...this.running]), new Promise((r) => setTimeout(r, ms))]);
+  }
+
+  private async handleOne(cmd: SlashCommand): Promise<void> {
     const slow = this.d.timers.set(() => {
       void this.reply(cmd, 'Still working on it…');
     }, this.d.stillWorkingMs ?? 30_000);
@@ -212,10 +226,6 @@ export class DeployWindowApp {
       await this.reply(cmd, text);
     };
 
-    if (!this.d.rateLimit.take(cmd.userId)) {
-      await refuse('rate_limited', 'Too many starts: at most 10 per hour per user.');
-      return;
-    }
     const targets = c.targets.length > 0 ? c.targets : ch.select === 'all' ? [...ch.targets.keys()] : [];
     if (targets.length === 0) {
       await refuse('targets_required', `Name at least one target: ${[...ch.targets.keys()].join(', ')}`);
@@ -270,6 +280,11 @@ export class DeployWindowApp {
           return;
         }
       }
+    }
+
+    if (!this.d.rateLimit.take(cmd.userId)) {
+      await refuse('rate_limited', 'Too many starts: at most 10 per hour per user.');
+      return;
     }
 
     let windowId = this.d.newId();
@@ -420,7 +435,9 @@ export class DeployWindowApp {
         );
         if (existing) return { target: p.target, id: existing.silence.id };
       } catch {
-        // Grafana still unreachable; the next attempt decides.
+        // Without a find we cannot prove the silence is absent, so we do not create again.
+        // Rollback (or keep) still sweeps the window id afterwards.
+        return { target: p.target, failure: last };
       }
     }
     return { target: p.target, failure: last };

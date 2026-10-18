@@ -121,7 +121,11 @@ export class GrafanaClient implements GrafanaApi {
       // Never include the request (it carries the token); the cause message is enough.
       throw new GrafanaError('timeout', `Grafana ${what}: ${(e as Error).message}`);
     }
-    return { status: res.status, text: await res.text() };
+    try {
+      return { status: res.status, text: await res.text() };
+    } catch (e) {
+      throw new GrafanaError('timeout', `Grafana answer could not be read: ${(e as Error).message}`);
+    }
   }
 
   /** Runs a call with retries for network errors and 5xx; a 4xx is returned to the caller. */
@@ -169,8 +173,15 @@ export class GrafanaClient implements GrafanaApi {
       comment: s.comment,
     });
     if (r.status !== 200 && r.status !== 202) throw classify(r.status, r.text);
-    const id = (JSON.parse(r.text) as { silenceID?: string }).silenceID;
-    if (typeof id !== 'string' || id === '') throw new GrafanaError('rejected', 'Grafana returned no silence id', r.status);
+    // Grafana accepted the call; if the id cannot be read, the result is unknown and the caller
+    // must find the silence by window id before it creates again (class timeout = retry after find).
+    let id: unknown;
+    try {
+      id = (JSON.parse(r.text) as { silenceID?: unknown }).silenceID;
+    } catch {
+      id = undefined;
+    }
+    if (typeof id !== 'string' || id === '') throw new GrafanaError('timeout', 'Grafana accepted the silence but returned no readable id');
     return id;
   }
 

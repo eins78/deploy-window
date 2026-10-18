@@ -111,6 +111,8 @@ void describe('rejections (T-CFG-6)', () => {
     ['default_environment not listed', (d) => { chA(d).default_environment = 'STAGE'; }, /not in environments/],
     ['unknown key (typo)', (d) => { chA(d).enviroments = ['X']; }, /nrecognized key/],
     ['instance outside [a-z0-9]{1,16}', (d) => { d.limits.instance = 'Bad-Name'; }, /a-z0-9/],
+    ['plain http for a remote Grafana', (d) => { d.grafana.url = 'http://grafana.example.org'; }, /loopback/],
+    ['two mute definitions for one env', (d) => { chA(d).targets.web.prod = chA(d).targets.web.PROD; }, /second mute definition/],
     ['unknown alertmanager type', (d) => { d.grafana.url = 'ftp://x'; }, /http/],
   ];
   for (const [name, mutate, pattern] of rows) void it(name, () => { rejects(mutate, pattern); });
@@ -123,6 +125,13 @@ void describe('rejections (T-CFG-6)', () => {
     d.channels.C0CHANNELC1.auth = { allow_users: ['U0EXAMPLE09'] };
     const c = validateConfig(d);
     assert.deepEqual(c.channels.get(CH_A)?.auth, { allowUsers: ['U0EXAMPLE09'], allowUsergroups: [] });
+  });
+  void it('plain http to loopback and https anywhere are valid', () => {
+    for (const url of ['http://127.0.0.1:3000', 'http://localhost:3000', 'http://[::1]:3000', 'https://grafana.example.org']) {
+      const d = base();
+      d.grafana.url = url;
+      assert.deepEqual(errorsOf(d), [], url);
+    }
   });
   void it('a regex entry with allow_regex and an equality matcher is valid', () => {
     const d = base();

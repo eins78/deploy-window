@@ -19,7 +19,7 @@ limits:
   max_concurrent_windows: 10              # active windows over all channels
   max_matched: 50                         # optional; refuse an entry that matches more alerts
 # marker_key_env: DWA_MARKER_KEY          # optional; signs the marker with HMAC-SHA256
-# audit_file: /var/log/deploy-window/audit.jsonl   # optional; append-only copy of the audit lines
+# audit_file: /var/log/deploy-window/audit.jsonl   # optional; the app appends every audit line to it
 auth:
   allow_usergroups: [S0EXAMPLE01]         # Slack user group ids (S…)
 channels:

@@ -58,8 +58,11 @@ start, the log has one `active_at_start` line per active window silence (DWA-ST-
 state is lost: reminders of running windows are not posted, and the rate limit restarts.
 
 A configuration change does not need a restart: `systemctl reload deploy-window` sends `SIGHUP`. A
-file with errors is refused and the old configuration stays (log line `config_reload_failed`). A
-change of the token variable names or the slash command needs a restart.
+file with errors is refused and the old configuration stays (log line `config_reload_failed`).
+Some keys are bound at start and need a restart: the token and key variable names, `slack.command`,
+`grafana.url`, `grafana.alertmanager`, `audit_file` and `limits.instance`. A reload that changes one
+of them is refused as a whole (log line `config_reload_needs_restart`). Change `limits.instance`
+only when no window is active: running windows keep the old prefix and become invisible to the app.
 
 ## Manual fallback
 
@@ -76,6 +79,9 @@ When the app is down, or a window must end and the app cannot do it:
 To open a window without the app, create a silence by hand with the same matchers as the target's
 entries in the configuration. Do not copy the DWA marker into a hand-made silence: DWA would then
 treat it as its own.
+
+The audit file (`audit_file`) is a plain file that the app appends to. To make it append-only, set
+the attribute on the host (`chattr +a`) and add `LogsDirectory=deploy-window` to the unit.
 
 ## Logs
 

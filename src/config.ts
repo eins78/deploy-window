@@ -258,6 +258,10 @@ function validateChannel(
         errors.push({ path: ep, message: `"${envKey}" is not in environments` });
         continue;
       }
+      if (byEnv.has(env)) {
+        errors.push({ path: ep, message: `a second mute definition for ${env} (names are case-insensitive)` });
+        continue;
+      }
       if (entries.length === 0) errors.push({ path: ep, message: 'a mute definition needs at least one entry' });
       byEnv.set(
         env,
@@ -312,6 +316,15 @@ function validateChannel(
   };
 }
 
+function isLoopback(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'localhost' || host === '[::1]' || /^127\.\d+\.\d+\.\d+$/.test(host);
+  } catch {
+    return false;
+  }
+}
+
 /** Validates parsed YAML. Throws ConfigInvalid with every error found. */
 export function validateConfig(data: unknown): Config {
   const errors: ConfigError[] = [];
@@ -330,6 +343,9 @@ export function validateConfig(data: unknown): Config {
   if (minDuration < 1) errors.push({ path: 'limits.min_duration', message: 'min_duration must be at least 1m' });
   if (file.grafana.url.endsWith('/')) errors.push({ path: 'grafana.url', message: 'must not end with a slash' });
   if (!/^https?:\/\//.test(file.grafana.url)) errors.push({ path: 'grafana.url', message: 'must be an http or https URL' });
+  else if (file.grafana.url.startsWith('http://') && !isLoopback(file.grafana.url)) {
+    errors.push({ path: 'grafana.url', message: 'plain http is allowed for a loopback address only; use https (DWA-DEP-002)' });
+  }
 
   const channels = new Map<string, ChannelConfig>();
   for (const [id, raw] of Object.entries(file.channels)) {

@@ -67,7 +67,16 @@ function notify(state: string): void {
   execFile('systemd-notify', [`--pid=${String(process.pid)}`, state], () => undefined);
 }
 
+function refuseTlsOff(): void {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+    // DWA-DEP-002: TLS verification cannot be switched off.
+    process.stderr.write('NODE_TLS_REJECT_UNAUTHORIZED=0 is not allowed\n');
+    process.exit(EXIT_CONFIG);
+  }
+}
+
 async function checkConfig(args: string[]): Promise<number> {
+  refuseTlsOff();
   const path = configPath();
   let config: Config;
   try {
@@ -110,12 +119,8 @@ async function checkConfig(args: string[]): Promise<number> {
 
 async function run(): Promise<void> {
   const path = configPath();
+  refuseTlsOff();
   let config = loadOrExit(path);
-  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
-    // DWA-DEP-002: TLS verification cannot be switched off.
-    process.stderr.write('NODE_TLS_REJECT_UNAUTHORIZED=0 is not allowed\n');
-    process.exit(EXIT_CONFIG);
-  }
   const botToken = requireEnv(config.slack.botTokenEnv);
   const appToken = requireEnv(config.slack.appTokenEnv);
   const grafanaToken = requireEnv(config.grafana.tokenEnv);
@@ -126,7 +131,13 @@ async function run(): Promise<void> {
     secrets: () => secretNames.map((n) => process.env[n] ?? '').filter((v) => v !== ''),
   });
 
-  const web = new WebClient(botToken, { logger: slackLogger(log, 'web-api') });
+  // Bounded retries and a timeout, so a Slack outage cannot hold a channel lock for long.
+  const web = new WebClient(botToken, {
+    logger: slackLogger(log, 'web-api'),
+    timeout: 10_000,
+    retryConfig: { retries: 2, factor: 2, minTimeout: 1000, maxTimeout: 4000 },
+    rejectRateLimitedCalls: true,
+  });
   // DWA-OPS-001: self-check. A failed Slack check ends the process (systemd restarts it).
   try {
     const who = await web.auth.test();
@@ -215,7 +226,11 @@ async function run(): Promise<void> {
   const shutdown = (signal: string) => {
     log.log('info', 'stopping', { signal });
     if (watchdog !== undefined) clearInterval(watchdog);
-    void wiring.stop().finally(() => process.exit(0));
+    // Stop taking commands, then give running ones up to 20 s to finish.
+    void wiring
+      .stop()
+      .then(() => app.drain(20_000))
+      .finally(() => process.exit(0));
   };
   process.on('SIGTERM', () => { shutdown('SIGTERM'); });
   process.on('SIGINT', () => { shutdown('SIGINT'); });
