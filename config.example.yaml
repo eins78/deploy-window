@@ -1,0 +1,50 @@
+# Deploy Window configuration, paid-plan workspace (user groups available).
+# Copy to /etc/deploy-window/config.yaml or point DWA_CONFIG at it.
+# This file holds no secret: tokens are named by environment variable (*_env).
+version: 1
+slack:
+  command: /deploy                        # the slash command registered in the Slack app
+  bot_token_env: DWA_SLACK_BOT_TOKEN      # xoxb-…
+  app_token_env: DWA_SLACK_APP_TOKEN      # xapp-… (Socket Mode)
+grafana:
+  url: http://127.0.0.1:3000              # base URL, no trailing slash
+  token_env: DWA_GRAFANA_TOKEN            # service-account token
+  alertmanager: grafana                   # the alertmanager name in the URL path
+limits:
+  min_duration: 5m
+  max_duration: 4h                        # global cap; a channel or environment may lower it
+  max_message_length: 300
+  instance: dwa                           # marker prefix; unique per deployment on one Grafana
+  max_silences_per_window: 20
+  max_concurrent_windows: 10              # active windows over all channels
+  max_matched: 50                         # optional; refuse an entry that matches more alerts
+# marker_key_env: DWA_MARKER_KEY          # optional; signs the marker with HMAC-SHA256
+# audit_file: /var/log/deploy-window/audit.jsonl   # optional; append-only copy of the audit lines
+auth:
+  allow_usergroups: [S0EXAMPLE01]         # Slack user group ids (S…)
+channels:
+  # Keyed by channel id, never by name. Do not map a channel shared with another organization.
+  C0EXAMPLE01:
+    label: "#deploys-example"
+    environments: [INTEG, PROD]
+    default_environment: INTEG
+    select: all                           # all | explicit
+    on_partial: rollback                  # rollback (default) | keep
+    max_duration: 2h
+    env_max_duration: {PROD: 1h}
+    targets:
+      api:
+        INTEG:
+          - matchers: [{name: target_id, value: example-integ-api}]
+        PROD:
+          - matchers: [{name: target_id, value: example-prod-api}]
+          - matchers: [{name: target_id, value: example-prod-api-worker}]
+      web:
+        INTEG:
+          - matchers: [{name: target_id, value: example-integ-web}]
+        PROD:
+          # one silence for several hosts: an equality matcher plus one regex matcher
+          - allow_regex: true
+            matchers:
+              - {name: env, value: prod}
+              - {name: host, value: "example-web-[0-9]+", is_regex: true}

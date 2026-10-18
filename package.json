@@ -1,0 +1,40 @@
+{
+  "name": "deploy-window",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "A slash command for Slack that opens a maintenance window in Grafana: it silences the alerts of the targets a channel maps and announces the window.",
+  "repository": "github:eins78/deploy-window",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "deploy-window": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --import tsx --test test/*.test.ts",
+    "lint:tokens": "node --import tsx scripts/lint-tokens.ts",
+    "check:licenses": "node --import tsx scripts/check-licenses.ts"
+  },
+  "dependencies": {
+    "@slack/socket-mode": "2.0.7",
+    "@slack/web-api": "^7.19.0",
+    "js-yaml": "^5.5.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@total-typescript/tsconfig": "^1.0.4",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.13.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.2"
+  },
+  "packageManager": "pnpm@12.14.0"
+}

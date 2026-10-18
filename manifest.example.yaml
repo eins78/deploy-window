@@ -1,0 +1,27 @@
+# Slack app manifest (DWA-DEP-008). Create the app from this manifest at api.slack.com/apps,
+# then create an app-level token with the scope connections:write.
+display_information:
+  name: Deploy Window
+  description: Opens deploy windows that silence Grafana alerts.
+features:
+  bot_user:
+    display_name: Deploy Window
+    always_online: false
+  slash_commands:
+    - command: /deploy
+      description: Open, end or list a deploy window
+      usage_hint: start 30m PROD -- release 2.4
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write
+      # add usergroups:read only if the configuration uses allow_usergroups
+      # - usergroups:read
+settings:
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

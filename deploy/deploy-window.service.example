@@ -1,0 +1,47 @@
+# systemd unit for Deploy Window (DWA-DEP-001, DWA-OPS-002).
+# Install the app to /opt/deploy-window (pnpm install --prod && pnpm build), the configuration to
+# /etc/deploy-window/config.yaml, and the tokens to /etc/deploy-window/env (mode 0600, root).
+[Unit]
+Description=Deploy Window (Slack slash command for Grafana silences)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+WatchdogSec=120
+ExecStart=/usr/bin/node /opt/deploy-window/dist/main.js run
+ExecReload=/bin/kill -HUP $MAINPID
+Environment=DWA_CONFIG=/etc/deploy-window/config.yaml
+EnvironmentFile=/etc/deploy-window/env
+Restart=always
+RestartSec=5
+
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+PrivateUsers=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+# For audit_file, add: LogsDirectory=deploy-window
+
+[Install]
+WantedBy=multi-user.target

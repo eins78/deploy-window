@@ -1,0 +1,38 @@
+# Example Grafana alert rule for DWA-OPS-005, in Grafana's file-provisioning format.
+# It fires when more silences are active than Deploy Window should ever hold.
+#
+# Grafana exports no per-comment silence metric, so this counts ALL active silences of the
+# Grafana organization (metric grafana_alerting_silences, scraped from Grafana's own /metrics).
+# Set the threshold to max_silences_per_window × max_concurrent_windows plus the silences that
+# people create by hand. Route the rule through a contact point and labels that no DWA target
+# matches, so a deploy window can never mute it.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: deploy-window
+    folder: Deploy Window
+    interval: 1m
+    rules:
+      - uid: deploy-window-too-many-silences
+        title: Too many active silences
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+          component: deploy-window-guard   # no DWA matcher may select this label
+        annotations:
+          summary: More silences are active than Deploy Window allows. Examine the silences in Grafana.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: PROMETHEUS_DATASOURCE_UID
+            model:
+              expr: sum(grafana_alerting_silences{state="active"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: {type: gt, params: [200]}

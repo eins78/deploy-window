@@ -1,0 +1,16 @@
+# Deploy Window configuration, Free-plan workspace: Slack user groups do not exist on Free,
+# so the allow list names users only (DWA-AUTH-008). A Free workspace allows at most 10 apps.
+version: 1
+slack: {command: /window, bot_token_env: B_BOT, app_token_env: B_APP}
+grafana: {url: "https://grafana.org-b.example", token_env: B_GRAFANA, alertmanager: grafana}
+limits: {min_duration: 10m, max_duration: 2h, max_message_length: 200}
+auth: {allow_users: [U0ORGB0001, U0ORGB0002]}
+channels:
+  C0ORGB0001:
+    label: "#releases-example"
+    environments: [PROD]          # one environment: the word is optional
+    select: explicit              # the user must name at least one target
+    on_partial: rollback
+    targets:
+      shop: {PROD: [{matchers: [{name: service, value: shop}, {name: stage, value: prod}]}]}
+      mail: {PROD: [{matchers: [{name: service, value: mail}]}]}

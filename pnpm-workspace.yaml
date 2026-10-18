@@ -1,0 +1,6 @@
+packages:
+  - .
+# pnpm refuses an install whose build scripts were ignored unless the package is approved here;
+# esbuild (via tsx) is the only one.
+allowBuilds:
+  esbuild: true
