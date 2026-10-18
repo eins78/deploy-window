@@ -27,6 +27,41 @@ The service needs outbound HTTPS and WSS to `*.slack.com` and to the Grafana URL
 port. At start it logs `self_check_slack` and `self_check_grafana`; a failed Slack check ends the
 process and systemd restarts it.
 
+## Container
+
+Each release publishes the image `ghcr.io/eins78/deploy-window:X.Y.Z` for `linux/amd64` and
+`linux/arm64`; a stable release also moves `latest`. Pin the exact version in production. The image
+runs as the user `node`, listens on no port and holds no secret.
+
+```yaml
+services:
+  deploy_window:
+    image: ghcr.io/eins78/deploy-window:X.Y.Z
+    restart: unless-stopped
+    env_file: deploy-window.env          # the three tokens, mode 0600, outside any repository
+    volumes:
+      - ./config.yaml:/etc/deploy-window/config.yaml:ro
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s               # DWA drains running commands for up to 20 s
+```
+
+These settings meet DWA-DEP-001 for a container. Check the configuration with the same image:
+`docker compose run --rm deploy_window check-config --dry-run`.
+
+- **Health:** the image sets `DWA_HEALTH_FILE=/tmp/deploy-window.alive` and a `HEALTHCHECK` that
+  fails when the file is older than 60 seconds. DWA writes it only while a Slack connection is up
+  (DWA-OPS-007), so `docker ps` shows `unhealthy` when Slack is unreachable. The check needs a
+  writable `/tmp`.
+- **Reload:** `docker kill -s HUP <container>` reloads the configuration, as `systemctl reload` does.
+  Node is PID 1, so the signal reaches DWA directly.
+- **Grafana on the same host:** a plain `http` Grafana URL is valid for a loopback address only
+  (DWA-DEP-002). Inside a container, the host's address is not loopback. Use the Grafana `https` URL,
+  or run a TCP forwarder in the container's network namespace that listens on `127.0.0.1` and
+  forwards to Grafana, and point `grafana.url` at `http://127.0.0.1:<port>`.
+
 ## Token rotation
 
 Rotate a token when it expires, when staff change, or when it may have leaked (DWA-OPS-004).
@@ -52,6 +87,9 @@ Running windows are not affected by a token rotation: they live in Grafana as si
 3. Replace `/opt/deploy-window` with the new build (`pnpm install --frozen-lockfile && pnpm build`).
 4. `DWA_CONFIG=/etc/deploy-window/config.yaml node dist/main.js check-config`.
 5. `systemctl start deploy-window` and check the log for `started` and the two self-checks.
+
+In a container: set the new version in the image tag, run `check-config` with the new image, then
+recreate the container (`docker compose up -d deploy_window`) and check the log as in step 5.
 
 A running window is unaffected: its silences stay in Grafana and end at their end time. After the
 start, the log has one `active_at_start` line per active window silence (DWA-ST-007). In-memory
