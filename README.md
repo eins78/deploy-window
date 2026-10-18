@@ -143,8 +143,9 @@ pnpm check:licenses  # production dependency licences
 The unit tests cover the requirements of the specification with a fake Slack and a fake Grafana.
 These checks of the specification's test plan are **not** automated here:
 
-- the live tests L-GRA-1, L-GRA-2, L-CFG-1 and L-E2E-1 (they need a throwaway Slack workspace and a
-  test Grafana; L-CFG-1, a non-zero alert count through the alerts endpoint, is still open);
+- the live tests L-GRA-1, L-CFG-1 and L-E2E-1 (they need a Slack workspace and a Grafana; they were run
+  by hand once and passed, see the specification's test plan). L-GRA-2 is open: OSS Grafana has no
+  custom roles, so a token restricted to the three silence actions cannot be made there;
 - T-DEP-1 as a `systemd-analyze security` score, T-DEP-2 (egress only), T-OPS-1 and T-OPS-2 (self-check
   and watchdog on a running service) and T-OPS-5 (the example alert rule evaluated on a Grafana);
 - the adapter to the real Slack Web API (`WebSlackOut`) is exercised only through its interface.
