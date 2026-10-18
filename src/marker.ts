@@ -117,6 +117,13 @@ export function parseMarker(comment: string, instance: string, key?: Buffer): Ma
   return { kind: 'own', marker: { ...fields, message } };
 }
 
+/** The marker key (marker_key_env): 32 bytes written as 64 hex characters. */
+export function parseMarkerKey(hex: string): Buffer {
+  const t = hex.trim();
+  if (!/^[0-9a-fA-F]{64}$/.test(t)) throw new Error('the marker key must be 32 random bytes as 64 hex characters');
+  return Buffer.from(t, 'hex');
+}
+
 /** DWA-ST-001: 8 characters from [a-z2-7], from a cryptographically secure source. */
 export function newWindowId(random: (n: number) => Buffer = randomBytes): string {
   const bytes = random(8);

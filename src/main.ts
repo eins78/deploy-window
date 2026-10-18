@@ -10,7 +10,7 @@ import { type Config, ConfigInvalid, configPath, loadConfigFile, secretEnvNames 
 import { reloadConfig } from './reload.js';
 import { GrafanaClient } from './grafana.js';
 import { createLogger, type Logger, redact } from './log.js';
-import { newWindowId } from './marker.js';
+import { newWindowId, parseMarkerKey } from './marker.js';
 import { ChannelLocks, Dedupe, RateLimit } from './memory.js';
 import { SlackApiError, usergroupMembers, WebSlackOut } from './slack.js';
 import { wireSockets } from './socket.js';
@@ -124,7 +124,15 @@ async function run(): Promise<void> {
   const botToken = requireEnv(config.slack.botTokenEnv);
   const appToken = requireEnv(config.slack.appTokenEnv);
   const grafanaToken = requireEnv(config.grafana.tokenEnv);
-  const markerKey = config.markerKeyEnv === undefined ? undefined : Buffer.from(requireEnv(config.markerKeyEnv), 'utf8');
+  let markerKey: Buffer | undefined;
+  if (config.markerKeyEnv !== undefined) {
+    try {
+      markerKey = parseMarkerKey(requireEnv(config.markerKeyEnv));
+    } catch (e) {
+      process.stderr.write(`${config.markerKeyEnv}: ${(e as Error).message}\n`);
+      process.exit(EXIT_CONFIG);
+    }
+  }
   const secretNames = secretEnvNames(config);
   const log = createLogger({
     auditFile: config.auditFile,

@@ -1,7 +1,7 @@
 // covers: DWA-ST-001, DWA-ST-006, DWA-CFG-010 (T-ST-1, T-ST-6)
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatMarker, newWindowId, parseMarker } from '../src/marker.js';
+import { formatMarker, newWindowId, parseMarker, parseMarkerKey } from '../src/marker.js';
 
 const fields = {
   instance: 'dwa',
@@ -50,5 +50,20 @@ void describe('marker (T-ST-6)', () => {
     assert.equal(parseMarker(formatMarker(fields, 'm'), 'dwa', key).kind, 'foreign');
     assert.equal(parseMarker(signed.replace('env=PROD', 'env=INTEG'), 'dwa', key).kind, 'foreign');
     assert.equal(parseMarker(signed, 'dwa', Buffer.from('k2')).kind, 'foreign');
+  });
+});
+
+void describe('marker key (council finding 1)', () => {
+  void it('a 64-hex-character key decodes to 32 bytes and signs markers that parse as own', () => {
+    const hex = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
+    const key = parseMarkerKey(hex);
+    assert.equal(key.length, 32);
+    const c = formatMarker(fields, 'm', key);
+    assert.equal(parseMarker(c, 'dwa', parseMarkerKey(hex.toUpperCase())).kind, 'own');
+  });
+  void it('anything else is refused', () => {
+    for (const bad of ['', 'short', 'a'.repeat(63), 'a'.repeat(66), 'g'.repeat(64), 'not hex at all but sixty-four characters long, really, padded....']) {
+      assert.throws(() => parseMarkerKey(bad), /32 random bytes/);
+    }
   });
 });

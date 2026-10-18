@@ -3,10 +3,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { load } from 'js-yaml';
+import { DeployWindowApp } from '../src/commands.js';
 import { validateConfig } from '../src/config.js';
 import { GrafanaError } from '../src/grafana.js';
 import { parseMarker } from '../src/marker.js';
-import { audits, CH_A, CH_B, CH_C, FIXTURE_YAML, makeHarness, STRANGER, T0, USER, USER2 } from './helpers.js';
+import { RateLimit } from '../src/memory.js';
+import { audits, CH_A, CH_B, CH_C, cmd, FIXTURE_YAML, makeHarness, STRANGER, T0, USER, USER2 } from './helpers.js';
 
 const markerOf = (comment: string) => {
   const p = parseMarker(comment, 'dwa');
@@ -600,5 +602,32 @@ void describe('create retry without proof (review finding)', () => {
     release();
     await drained;
     assert.equal(done, true);
+  });
+});
+
+void describe('end with named targets (council finding 2)', () => {
+  void it('a named target that is not in the window is named in the reply', async () => {
+    const h = makeHarness();
+    await h.run('start 30m PROD api');
+    await h.run('end PROD api web');
+    assert.equal(h.grafana.active().length, 0);
+    assert.match(h.slack.posts.at(-1)?.text ?? '', /Not part of this window, so not ended: web\./);
+  });
+  void it('the rate limit message follows the configured limit (council finding 4)', async () => {
+    const h = makeHarness();
+    const app = new DeployWindowApp({ ...h.deps, rateLimit: new RateLimit(1, 1_800_000, () => h.clock.t) });
+    await app.handle(cmd('start 30m INTEG api'));
+    await app.handle(cmd('end'));
+    await app.handle(cmd('start 30m INTEG api'));
+    assert.match(h.slack.lastEphemeral(), /at most 1 per 30m per user/);
+  });
+  void it('a refused start counts before Grafana is called (council finding 5)', async () => {
+    const h = makeHarness();
+    const lists = () => h.grafana.calls.filter((c) => c === 'list').length;
+    for (let i = 0; i < 10; i++) await h.run('start 30m PROD api', CH_A, USER2); // 1 start, then 9 conflicts
+    const before = lists();
+    await h.run('start 30m PROD api', CH_A, USER2);
+    assert.match(h.slack.lastEphemeral(), /Too many starts/);
+    assert.equal(lists(), before);
   });
 });

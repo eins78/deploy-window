@@ -241,6 +241,13 @@ export class DeployWindowApp {
       return;
     }
 
+    // DWA-LIM-004: counted before the first Grafana call, so the limit also bounds the load on Grafana.
+    if (!this.d.rateLimit.take(cmd.userId)) {
+      const rl = this.d.rateLimit;
+      await refuse('rate_limited', `Too many starts: at most ${String(rl.max)} per ${formatDuration(Math.round(rl.windowMs / 60_000))} per user.`);
+      return;
+    }
+
     let state: FindResult;
     try {
       state = await this.find(config);
@@ -280,11 +287,6 @@ export class DeployWindowApp {
           return;
         }
       }
-    }
-
-    if (!this.d.rateLimit.take(cmd.userId)) {
-      await refuse('rate_limited', 'Too many starts: at most 10 per hour per user.');
-      return;
     }
 
     let windowId = this.d.newId();
@@ -547,9 +549,15 @@ export class DeployWindowApp {
     const w = matching[0];
     if (w === undefined) return;
     const selected = c.targets.length === 0 ? undefined : c.targets.filter((t) => w.targets.has(t));
+    const notInWindow = c.targets.filter((t) => !w.targets.has(t));
     // DWA-FAIL-003: try every silence, report the ones that remain.
     const all = [...w.targets.values()].flatMap((t) => t.live);
     const toEnd = all.filter((o) => selected === undefined || selected.includes(o.marker.target));
+    if (toEnd.length === 0) {
+      this.d.log.audit('end_none', { ...base, window: w.id });
+      await this.reply(cmd, `Window \`${w.id}\` has no active silence for ${c.targets.join(', ')}. Nothing was ended.`);
+      return;
+    }
     const expired: OwnSilence[] = [];
     const failed: { s: OwnSilence; failure: FailureClass }[] = [];
     for (const o of toEnd) {
@@ -567,6 +575,7 @@ export class DeployWindowApp {
     const endedTargets = [...new Set(expired.map((o) => o.marker.target))];
     const replyLines = [`Window \`${w.id}\` ${status} by <@${cmd.userId}>${endedTargets.length > 0 ? `: ${endedTargets.join(', ')}` : ''}.`];
     if (c.message !== '') replyLines.push(`> ${slackEscape(c.message)}`);
+    if (notInWindow.length > 0) replyLines.push(`Not part of this window, so not ended: ${notInWindow.join(', ')}.`);
     for (const f of failed) replyLines.push(`• ${f.s.marker.target}: could not end \`${f.s.silence.id}\` (${f.failure})`);
     const r = plain(replyLines.join('\n'));
     try {

@@ -42,8 +42,8 @@ export class RateLimit {
   private readonly hits = new Map<string, number[]>();
 
   constructor(
-    private readonly max = 10,
-    private readonly windowMs = 3_600_000,
+    readonly max = 10,
+    readonly windowMs = 3_600_000,
     private readonly now: () => number = Date.now,
   ) {}
 

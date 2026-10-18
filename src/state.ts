@@ -79,6 +79,6 @@ export function windowsOf(own: OwnSilence[]): Map<string, WindowView> {
 
 export function sameMatchers(a: Matcher[], b: Matcher[]): boolean {
   const key = (ms: Matcher[]) =>
-    JSON.stringify(ms.map((m) => [m.name, m.value, m.isRegex]).sort((x, y) => (JSON.stringify(x) < JSON.stringify(y) ? -1 : 1)));
+    JSON.stringify(ms.map((m) => JSON.stringify([m.name, m.value, m.isRegex])).sort());
   return key(a) === key(b);
 }
