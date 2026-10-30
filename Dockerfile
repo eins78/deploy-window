@@ -2,7 +2,7 @@
 # Deploy Window container image. No secrets in the image: tokens come from the environment,
 # the configuration is mounted at /etc/deploy-window/config.yaml (DWA-CFG-001, DWA-DEP-003).
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=26
 ARG PNPM_VERSION=12.14.0
 
 FROM node:${NODE_VERSION}-slim AS base
