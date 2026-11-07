@@ -51,6 +51,14 @@ void describe('loading (T-CFG-1, T-CFG-5)', () => {
     assert.equal(c.limits.maxSilencesPerWindow, 20);
     assert.equal(c.limits.maxConcurrentWindows, 10);
   });
+  void it('mention commands are off by default and switched on by slack.mentions (DWA-MEN-001)', () => {
+    assert.equal(parseConfigText(FIXTURE_YAML).slack.mentions, false);
+    const d = base();
+    d.slack.mentions = true;
+    assert.equal(validateConfig(d).slack.mentions, true);
+    d.slack.mentions = 'yes';
+    assert.ok(errorsOf(d).some((e) => /mentions/.test(e)));
+  });
 });
 
 void describe('secrets are refused (T-CFG-2)', () => {

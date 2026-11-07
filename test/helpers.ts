@@ -142,6 +142,7 @@ export interface Posted {
   text: string;
   blocks: Block[];
   threadTs: string | undefined;
+  broadcast: boolean;
 }
 
 export class FakeSlack implements SlackOut {
@@ -155,12 +156,12 @@ export class FakeSlack implements SlackOut {
   failEphemeral = false;
   private seq = 0;
 
-  post(channel: string, text: string, blocks: Block[], threadTs?: string): Promise<string> {
+  post(channel: string, text: string, blocks: Block[], threadTs?: string, broadcast = false): Promise<string> {
     this.order.push('post');
     const err = this.failPost(channel, threadTs);
     if (err !== undefined) return Promise.reject(new SlackApiError(err));
     const ts = `1768471200.${String(++this.seq).padStart(6, '0')}`;
-    this.posts.push({ channel, ts, text, blocks, threadTs });
+    this.posts.push({ channel, ts, text, blocks, threadTs, broadcast });
     return Promise.resolve(ts);
   }
 

@@ -1,4 +1,5 @@
 // Command handling: start, end, list, help (spec sections 5.2, 6, 8, 9, 10).
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { type Announcement, renderAnnouncement, plain, slackDate, type SilenceLine, type WindowStatus } from './announce.js';
 import type { Authorizer } from './auth.js';
 import type { ChannelConfig, Config, Entry } from './config.js';
@@ -19,6 +20,8 @@ export interface SlashCommand {
   text: string;
   responseUrl: string;
   triggerId: string | undefined;
+  /** Set when the command came from an app_mention: replies go to this thread, not ephemeral. */
+  mention?: { ts: string; threadTs: string };
 }
 
 export interface Timers {
@@ -62,6 +65,19 @@ interface CreateResult {
   failure?: FailureClass;
 }
 
+/** The route of the command being handled; every audit line gets it as `via` (DWA-MEN-006). */
+const route = new AsyncLocalStorage<'mention'>();
+
+function routeLogger(log: Logger): Logger {
+  return {
+    log: (level, event, fields) => { log.log(level, event, fields); },
+    audit: (event, fields, level) => {
+      const via = route.getStore();
+      log.audit(event, via === undefined ? fields : { ...fields, via }, level);
+    },
+  };
+}
+
 function failureOf(e: unknown): FailureClass {
   return e instanceof GrafanaError ? e.failure : 'rejected';
 }
@@ -70,11 +86,15 @@ export class DeployWindowApp {
   private readonly reminders = new Map<string, unknown>();
   private readonly running = new Set<Promise<void>>();
 
-  constructor(private readonly d: Deps) {}
+  private readonly d: Deps;
+
+  constructor(d: Deps) {
+    this.d = { ...d, log: routeLogger(d.log) };
+  }
 
   /** Entry point for one slash command, called after the envelope was acknowledged. */
   handle(cmd: SlashCommand): Promise<void> {
-    const p = this.handleOne(cmd);
+    const p = cmd.mention === undefined ? this.handleOne(cmd) : route.run('mention', () => this.handleOne(cmd));
     this.running.add(p);
     void p.finally(() => this.running.delete(p));
     return p;
@@ -107,7 +127,8 @@ export class DeployWindowApp {
     const ch = cmd.channelId.startsWith('D') ? undefined : config.channels.get(cmd.channelId);
     if (!ch) {
       this.d.log.audit('refused_unmapped_channel', base, 'warning');
-      await this.reply(cmd, UNMAPPED);
+      // A mention is public in its channel: stay silent where the app is not set up (DWA-MEN-007).
+      if (cmd.mention === undefined) await this.reply(cmd, UNMAPPED);
       return;
     }
 
@@ -150,7 +171,18 @@ export class DeployWindowApp {
   // ---- shared helpers ----
 
   /** Ephemeral reply with chat.postEphemeral; response_url is the fallback (DWA-CMD-008). */
-  private async reply(cmd: SlashCommand, text: string): Promise<void> {
+  private async reply(cmd: SlashCommand, text: string, threaded = true): Promise<void> {
+    if (cmd.mention !== undefined && threaded) {
+      // DWA-MEN-004: a caller that posted a message (an agent, a script) cannot read ephemeral replies, so a
+      // mention is answered in its thread, without broadcast.
+      try {
+        const r = plain(text);
+        await this.d.slack.post(cmd.channelId, r.text, r.blocks, cmd.mention.threadTs);
+        return;
+      } catch (e) {
+        this.d.log.log('warning', 'thread_reply_failed', { channel: cmd.channelId, error: e });
+      }
+    }
     try {
       await this.d.slack.ephemeral(cmd.channelId, cmd.userId, text);
       return;
@@ -408,6 +440,14 @@ export class DeployWindowApp {
     }, status === 'active' ? 'info' : 'warning');
     if (status !== 'active' && status !== 'partial') {
       await this.reply(cmd, `The window \`${windowId}\` was not opened: ${status}. See the announcement.`);
+    } else if (cmd.mention !== undefined) {
+      // DWA-MEN-005: the final result of start goes to the channel as well ("also send to the channel").
+      const r = plain(`Window \`${windowId}\` is ${status} for ${c.env}: ${targets.join(', ')}, until ${slackDate(endsAt)}.`);
+      try {
+        await this.d.slack.post(ch.id, r.text, r.blocks, cmd.mention.threadTs, true);
+      } catch (e) {
+        this.d.log.log('warning', 'final_reply_failed', { channel: ch.id, window: windowId, error: e });
+      }
     }
   }
 
@@ -579,7 +619,7 @@ export class DeployWindowApp {
     for (const f of failed) replyLines.push(`• ${f.s.marker.target}: could not end \`${f.s.silence.id}\` (${f.failure})`);
     const r = plain(replyLines.join('\n'));
     try {
-      await this.d.slack.post(ch.id, r.text, r.blocks, w.ts);
+      await this.d.slack.post(ch.id, r.text, r.blocks, w.ts, cmd.mention !== undefined);
     } catch (e) {
       this.d.log.log('warning', 'thread_reply_failed', { channel: ch.id, window: w.id, error: e });
       try {
@@ -641,7 +681,7 @@ export class DeployWindowApp {
       return `• \`${w.id}\` ${w.env}: ${targets}; until ${slackDate(w.endsAt)}; by <@${w.userId}>${msg}`;
     });
     if (foreign > 0) lines.push(`• ${String(foreign)} silence(s) with a foreign marker (wrong format or signature); check them in Grafana.`);
-    await this.reply(cmd, lines.length === 0 ? 'No active window in this channel.' : lines.join('\n'));
+    await this.reply(cmd, lines.length === 0 ? 'No active window in this channel.' : lines.join('\n'), false);
   }
 
   /** DWA-ST-007: after a restart, one audit line per active marked silence. */

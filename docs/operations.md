@@ -62,6 +62,36 @@ These settings meet DWA-DEP-001 for a container. Check the configuration with th
   or run a TCP forwarder in the container's network namespace that listens on `127.0.0.1` and
   forwards to Grafana, and point `grafana.url` at `http://127.0.0.1:<port>`.
 
+## Mention commands (optional)
+
+Mention commands (spec section 10.1) let a caller that cannot send a slash command, such as a script or
+an AI agent that posts as a Slack user, run the same commands as a message: `@Deploy Window start 30m
+PROD -- release 2.4`. They are off by default and use the same allowlist as the slash command.
+
+To enable them:
+
+1. In the Slack app (Features → OAuth & Permissions) add the bot scope `app_mentions:read`, and
+   (Features → Event Subscriptions) switch events on and subscribe the bot to `app_mention`. With
+   Socket Mode no request URL is needed. Or update the app from a manifest with the lines that are
+   commented in `manifest.example.yaml`.
+2. **Reinstall the app** (Install App → Reinstall). A new scope needs it, and the bot token may
+   change. Read the bot token on the OAuth page again, write it to `/etc/deploy-window/env` (or the
+   secret store you use) and restart the service. The app-level token does not change.
+3. Add `mentions: true` under `slack:` in the configuration, check it (`check-config`), and reload
+   (`systemctl reload deploy-window`; the key is not bound at start).
+4. Check the log for `slack_connected`. Post `@Deploy Window list` in a mapped channel as an allowed
+   user: `list` answers ephemerally, so the proof is an audit line `list` with `"via":"mention"`.
+
+The caller must write a real mention, `<@U…>` (the app's bot user id), not the plain text `@Deploy
+Window`; a client that sends plain text produces no event. Only the first line of the message is the
+command. Replies, refusals and denials appear in the thread of the mention; the final result of
+`start` and `end` also goes to the channel. To turn the feature off again, set `mentions: false` and
+reload; the Slack scope can stay.
+
+A mention is authorised by the Slack user id of the poster, like a slash command. If an agent posts
+through an AI assistant's Slack connector that is linked to a person's account, the poster is that person; give an agent
+its own Slack user where the audit trail should say who acted, and put that user on the allowlist.
+
 ## Token rotation
 
 Rotate a token when it expires, when staff change, or when it may have leaked (DWA-OPS-004).

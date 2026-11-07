@@ -1,5 +1,6 @@
 // Socket Mode wiring (DWA-SLK-001 to 003, DWA-CMD-011). No inbound port.
 import type { DeployWindowApp, SlashCommand } from './commands.js';
+import { type MentionEvent, mentionToCommand } from './mention.js';
 import type { Logger } from './log.js';
 import type { Dedupe } from './memory.js';
 
@@ -24,6 +25,13 @@ interface SlashEnvelope {
   };
 }
 
+interface MentionEnvelope {
+  ack: (response?: Record<string, unknown>) => Promise<void>;
+  envelope_id?: string;
+  event?: MentionEvent;
+  body?: { event?: MentionEvent };
+}
+
 export interface SocketOptions {
   /** Two or more connections: while one reconnects or refreshes, another is open. */
   sockets: SocketLike[];
@@ -32,6 +40,8 @@ export interface SocketOptions {
   log: Logger;
   command: () => string;
   onConnectedChange?: (connected: number) => void;
+  /** Mention commands: undefined or enabled=false ignores app_mention events. */
+  mentions?: () => { enabled: boolean; botUserId: string };
 }
 
 export function wireSockets(o: SocketOptions): { stop(): Promise<void> } {
@@ -52,6 +62,27 @@ export function wireSockets(o: SocketOptions): { stop(): Promise<void> } {
     socket.on('slash_commands', (payload) => {
       void handleEnvelope(payload as SlashEnvelope);
     });
+    socket.on('app_mention', (payload) => {
+      void handleMention(payload as MentionEnvelope);
+    });
+    const handleMention = async (env: MentionEnvelope) => {
+      try {
+        await env.ack();
+      } catch (e) {
+        o.log.log('error', 'ack_failed', { envelope: env.envelope_id, error: e });
+      }
+      const m = o.mentions?.();
+      if (m === undefined || !m.enabled) return;
+      const ev = env.event ?? env.body?.event;
+      if (ev === undefined) return;
+      const cmd = mentionToCommand(ev, m.botUserId, o.command(), env.envelope_id ?? '');
+      if (cmd === undefined) {
+        o.log.log('info', 'mention_ignored', { channel: ev.channel, subtype: ev.subtype });
+        return;
+      }
+      if (o.dedupe.check([env.envelope_id, cmd.triggerId])) return;
+      await o.app.handle(cmd);
+    };
     const handleEnvelope = async (env: SlashEnvelope) => {
       // DWA-CMD-011: acknowledge first, before any other work.
       try {

@@ -148,10 +148,12 @@ async function run(): Promise<void> {
     retryConfig: { retries: 2, factor: 2, minTimeout: 1000, maxTimeout: 4000 },
     rejectRateLimitedCalls: true,
   });
+  let botUserId = '';
   // DWA-OPS-001: self-check. A failed Slack check ends the process (systemd restarts it).
   try {
     const who = await web.auth.test();
     log.log('info', 'self_check_slack', { ok: true, team: who.team_id, bot: who.user_id });
+    botUserId = who.user_id ?? '';
   } catch (e) {
     log.log('error', 'self_check_slack', { ok: false, error: e });
     process.exit(1);
@@ -232,6 +234,7 @@ async function run(): Promise<void> {
     dedupe: new Dedupe(),
     log,
     command: () => config.slack.command,
+    mentions: () => ({ enabled: config.slack.mentions, botUserId }),
     onConnectedChange: (open) => {
       if (open > 0 && !ready) {
         ready = true;

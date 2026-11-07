@@ -6,6 +6,7 @@ slack:
   command: /deploy                        # the slash command registered in the Slack app
   bot_token_env: DWA_SLACK_BOT_TOKEN      # xoxb-…
   app_token_env: DWA_SLACK_APP_TOKEN      # xapp-… (Socket Mode)
+  # mentions: true                        # optional; also accept "@Deploy Window start 30m PROD -- note" (DWA-MEN-001)
 grafana:
   url: http://127.0.0.1:3000              # base URL, no trailing slash
   token_env: DWA_GRAFANA_TOKEN            # service-account token

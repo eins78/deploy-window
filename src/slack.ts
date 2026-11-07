@@ -8,7 +8,7 @@ export interface Block {
 
 export interface SlackOut {
   /** chat.postMessage as the bot; returns the message ts. */
-  post(channel: string, text: string, blocks: Block[], threadTs?: string): Promise<string>;
+  post(channel: string, text: string, blocks: Block[], threadTs?: string, broadcast?: boolean): Promise<string>;
   /** chat.update of a bot message. */
   update(channel: string, ts: string, text: string, blocks: Block[]): Promise<void>;
   /** chat.postEphemeral to one user in one channel. */
@@ -39,17 +39,14 @@ export class WebSlackOut implements SlackOut {
     private readonly fetchImpl: typeof fetch = globalThis.fetch,
   ) {}
 
-  async post(channel: string, text: string, blocks: Block[], threadTs?: string): Promise<string> {
+  async post(channel: string, text: string, blocks: Block[], threadTs?: string, broadcast = false): Promise<string> {
     try {
-      const r = await this.client.chat.postMessage({
-        channel,
-        text,
-        blocks,
-        parse: 'none',
-        unfurl_links: false,
-        unfurl_media: false,
-        ...(threadTs === undefined ? {} : { thread_ts: threadTs }),
-      });
+      const common = { channel, text, blocks, parse: 'none' as const, unfurl_links: false, unfurl_media: false };
+      // reply_broadcast ("also send to the channel") is valid only together with thread_ts.
+      const r =
+        threadTs === undefined
+          ? await this.client.chat.postMessage(common)
+          : await this.client.chat.postMessage({ ...common, thread_ts: threadTs, reply_broadcast: broadcast });
       if (typeof r.ts !== 'string') throw new SlackApiError('no_ts');
       return r.ts;
     } catch (e) {

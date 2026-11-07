@@ -99,6 +99,20 @@ DWA_CONFIG=/etc/deploy-window/config.yaml pnpm start check-config
 The full steps, token rotation, upgrades and the manual fallback are in
 [`docs/operations.md`](docs/operations.md).
 
+## Mention commands (optional)
+
+A script or an AI agent cannot send a slash command: a posted `/deploy …` is only text. With
+`slack.mentions: true` the same commands also work as a message that mentions the app:
+
+```text
+@Deploy Window start 30m PROD -- release 2.4
+```
+
+The same allowlist applies, so a person or an agent that is allowed may use both routes. Replies and
+errors appear in the thread of the message; the final result of `start` and `end` is also sent to the
+channel; `list` stays private. It is off by default and needs the scope `app_mentions:read` and the
+`app_mention` event; see [`docs/operations.md`](docs/operations.md) and spec section 10.1.
+
 ## Configuration
 
 Two complete examples:
