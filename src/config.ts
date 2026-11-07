@@ -42,7 +42,7 @@ export interface ChannelConfig {
 
 export interface Config {
   version: 1;
-  slack: { command: string; botTokenEnv: string; appTokenEnv: string };
+  slack: { command: string; botTokenEnv: string; appTokenEnv: string; mentions: boolean };
   grafana: { url: string; tokenEnv: string; alertmanager: string };
   limits: {
     minDuration: number;
@@ -115,6 +115,7 @@ const fileSchema = z.strictObject({
     command: z.string().regex(/^\/[a-z0-9_-]{1,31}$/, 'not a slash command such as /deploy'),
     bot_token_env: envVarName,
     app_token_env: envVarName,
+    mentions: z.boolean().default(false),
   }),
   grafana: z.strictObject({
     url: z.url(),
@@ -380,7 +381,7 @@ export function validateConfig(data: unknown): Config {
   if (errors.length > 0) throw new ConfigInvalid(errors);
   return {
     version: 1,
-    slack: { command: file.slack.command, botTokenEnv: file.slack.bot_token_env, appTokenEnv: file.slack.app_token_env },
+    slack: { command: file.slack.command, botTokenEnv: file.slack.bot_token_env, appTokenEnv: file.slack.app_token_env, mentions: file.slack.mentions },
     grafana: { url: file.grafana.url, tokenEnv: file.grafana.token_env, alertmanager: file.grafana.alertmanager },
     limits: {
       minDuration,

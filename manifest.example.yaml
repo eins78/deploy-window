@@ -19,7 +19,13 @@ oauth_config:
       - chat:write
       # add usergroups:read only if the configuration uses allow_usergroups
       # - usergroups:read
+      # add app_mentions:read only if the configuration sets slack.mentions: true (DWA-MEN-001)
+      # - app_mentions:read
 settings:
+  # With slack.mentions: true, subscribe to the mention event (Socket Mode needs no request URL):
+  # event_subscriptions:
+  #   bot_events:
+  #     - app_mention
   interactivity:
     is_enabled: false
   org_deploy_enabled: false
