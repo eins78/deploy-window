@@ -34,6 +34,7 @@
     "@total-typescript/tsconfig": "^1.0.4",
     "@types/node": "^26.0.0",
     "eslint": "^10.13.0",
+    "fast-check": "^4.10.3",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.2"
