@@ -1,8 +1,11 @@
-// covers: DWA-GEN-007, DWA-CMD-005 (T-GEN-7, T-CMD-3), as property tests against a reference written from spec 5.1
+// covers: DWA-GEN-007, DWA-CMD-005, 006, DWA-LIM-001, DWA-ENV-002 (T-GEN-7, T-CMD-3, T-CMD-4), as property tests
+// against a reference written from spec 5.1
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import fc from 'fast-check';
+import { validateConfig } from '../src/config.js';
 import { isDuration, parseDuration } from '../src/duration.js';
+import { capFor, parseCommand } from '../src/grammar.js';
 
 // FC_RUNS sets the number of runs per property (default 200, about a second in all); FC_SEED replays a failure.
 const RUNS = Number(process.env.FC_RUNS ?? '200');
@@ -170,5 +173,189 @@ void describe('parseDuration equals the reference from spec 5.1 (property)', () 
         if (parseDuration(s) !== referenceDuration(s)) assert.fail(`U+${cp.toString(16).toUpperCase()}: ${JSON.stringify(s)}`);
       }
     }
+  });
+});
+
+// ---- (c) a window that parseCommand accepts never exceeds the lowest documented cap ----
+
+// DWA-CFG-006: environment names match [A-Za-z][A-Za-z0-9_.-]{0,31} and are not a keyword.
+const ENV_NAME = /^[A-Za-z][A-Za-z0-9_.-]{0,31}$/;
+const KEYWORDS = ['start', 'end', 'list', 'help'];
+const TARGET = 'api';
+/** Valid env names that every plain JavaScript object already has as a property: constructor, toString, ... */
+const OBJECT_NAMES = Object.getOwnPropertyNames(Object.prototype).filter((n) => ENV_NAME.test(n));
+
+const envName = fc
+  .oneof(fc.stringMatching(ENV_NAME), fc.constantFrom('PROD', 'INTEG', 'Stage', 'dev'), fc.constantFrom(...OBJECT_NAMES))
+  .filter((n) => !KEYWORDS.includes(n.toLowerCase()) && referenceDuration(n) === undefined && n.toLowerCase() !== TARGET);
+
+/** The same ASCII name in any mix of case: names are case-insensitive (spec 5.1). */
+const recased = (name: string) =>
+  fc
+    .array(fc.boolean(), { minLength: name.length, maxLength: name.length })
+    .map((up) => chars(name).map((c, i) => (up[i] ? c.toUpperCase() : c.toLowerCase())).join(''));
+
+/** One documented spelling of n minutes (n at most 99h999m), as a configuration file would hold it. */
+function durationOf(n: number): string {
+  const h = Math.min(99, Math.floor(n / 60));
+  return `${String(h)}h${String(n - h * 60)}m`;
+}
+
+/** Any documented spelling of n minutes: hours or not, leading zeros, case. */
+function spellings(n: number): fc.Arbitrary<string> {
+  const lo = Math.max(0, Math.ceil((n - 999) / 60));
+  const hi = Math.min(99, Math.floor(n / 60));
+  return fc.record({ h: fc.integer({ min: lo, max: hi }), pad: fc.boolean(), upper: fc.boolean(), both: fc.boolean() }).map(({ h, pad, upper, both }) => {
+    const m = n - h * 60;
+    const hPart = `${pad && h < 10 ? '0' : ''}${String(h)}${upper ? 'H' : 'h'}`;
+    const mPart = `${pad && m < 100 ? '0' : ''}${String(m)}${upper ? 'M' : 'm'}`;
+    if (h === 0) return both ? hPart + mPart : mPart;
+    if (m === 0) return both ? hPart + mPart : hPart;
+    return hPart + mPart;
+  });
+}
+
+interface Setup {
+  envs: string[];
+  defaultEnv: string | undefined;
+  /** Undefined: the key is left out of the file, so the documented default applies. */
+  minDuration: number | undefined;
+  maxDuration: number | undefined;
+  channelMax: number | undefined;
+  /** Keys as written in the file. */
+  envMax: [string, number][];
+  namedEnv: string | undefined;
+  namesTarget: boolean;
+}
+
+interface Scenario extends Setup {
+  requested: number;
+  tokens: string[];
+}
+
+const setup: fc.Arbitrary<Setup> = fc
+  .tuple(fc.uniqueArray(envName, { minLength: 1, maxLength: 3, selector: (n) => n.toLowerCase() }), fc.option(fc.integer({ min: 1, max: 120 }), { nil: undefined }))
+  .chain(([envs, minDuration]) => {
+    const cap = fc.integer({ min: minDuration ?? 5, max: MAX_DURATION_MINUTES });
+    return fc.record({
+      envs: fc.constant(envs),
+      defaultEnv: fc.option(fc.constantFrom(...envs), { nil: undefined }),
+      minDuration: fc.constant(minDuration),
+      maxDuration: fc.option(cap, { nil: undefined }),
+      channelMax: fc.option(cap, { nil: undefined }),
+      // A YAML mapping holds a key once.
+      envMax: fc.uniqueArray(fc.tuple(fc.constantFrom(...envs), cap), { maxLength: 3, selector: ([key]) => key }),
+      namedEnv: fc.option(fc.constantFrom(...envs), { nil: undefined }),
+      namesTarget: fc.boolean(),
+    });
+  });
+
+function configData(s: Setup): unknown {
+  const env_max_duration: Record<string, string> = {};
+  for (const [key, minutes] of s.envMax) env_max_duration[key] = durationOf(minutes);
+  const mute = [{ matchers: [{ name: 'target_id', value: 'example-api' }] }];
+  return {
+    version: 1,
+    slack: { command: '/deploy', bot_token_env: 'DWA_SLACK_BOT_TOKEN', app_token_env: 'DWA_SLACK_APP_TOKEN' },
+    grafana: { url: 'http://127.0.0.1:3000', token_env: 'DWA_GRAFANA_TOKEN' },
+    limits: {
+      max_message_length: 100,
+      ...(s.minDuration === undefined ? {} : { min_duration: durationOf(s.minDuration) }),
+      ...(s.maxDuration === undefined ? {} : { max_duration: durationOf(s.maxDuration) }),
+    },
+    auth: { allow_users: ['U0EXAMPLE01'] },
+    channels: {
+      C0EXAMPLE01: {
+        environments: s.envs,
+        ...(s.defaultEnv === undefined ? {} : { default_environment: s.defaultEnv }),
+        ...(s.channelMax === undefined ? {} : { max_duration: durationOf(s.channelMax) }),
+        env_max_duration,
+        targets: { [TARGET]: Object.fromEntries(s.envs.map((e) => [e, mute])) },
+      },
+    },
+  };
+}
+
+/** DWA-ENV-002: the env named, else the only env, else default_environment, else none. */
+function documentedEnv(s: Setup): string | undefined {
+  if (s.namedEnv !== undefined) return s.namedEnv;
+  if (s.envs.length === 1) return s.envs[0];
+  return s.defaultEnv;
+}
+
+/** DWA-LIM-001 defaults (5 minutes, 4 hours); DWA-CMD-006: the lowest of global, channel and the env's own cap. */
+const documentedMin = (s: Setup) => s.minDuration ?? 5;
+function documentedCap(s: Setup, env: string | undefined): number {
+  const caps = [s.maxDuration ?? 240];
+  if (s.channelMax !== undefined) caps.push(s.channelMax);
+  if (env !== undefined) {
+    for (const [key, minutes] of s.envMax) if (key.toLowerCase() === env.toLowerCase()) caps.push(minutes);
+  }
+  return Math.min(...caps);
+}
+
+/** Boundaries (the floor, every cap, one either side), or anything the grammar can express. */
+const scenario: fc.Arbitrary<Scenario> = setup.chain((s) => {
+  const caps = [s.maxDuration ?? 240, ...(s.channelMax === undefined ? [] : [s.channelMax]), ...s.envMax.map(([, m]) => m)];
+  const edges = [documentedMin(s), documentedCap(s, documentedEnv(s)), ...caps]
+    .flatMap((n) => [n - 1, n, n + 1])
+    .filter((n) => n >= 0 && n <= MAX_DURATION_MINUTES);
+  return fc
+    .oneof(fc.constantFrom(...edges), fc.integer({ min: 0, max: MAX_DURATION_MINUTES }))
+    .chain((requested) =>
+      fc
+        .tuple(spellings(requested), s.namedEnv === undefined ? fc.constant(undefined) : recased(s.namedEnv))
+        .chain(([durationToken, envToken]) => {
+          const tokens = [durationToken, ...(envToken === undefined ? [] : [envToken]), ...(s.namesTarget ? [TARGET] : [])];
+          return fc.shuffledSubarray(tokens, { minLength: tokens.length }).map((order) => ({ ...s, requested, tokens: order }));
+        }),
+    );
+});
+
+const none = { defaultEnv: undefined, minDuration: undefined, maxDuration: undefined, channelMax: undefined, namedEnv: undefined };
+/** Counterexamples, pinned so that they run first on every seed. */
+const PINNED: [Scenario][] = [
+  // An env named like an Object.prototype property and no env cap: the cap read the inherited function (NaN), so
+  // 99h999m passed the default 4-hour cap.
+  [{ ...none, envs: ['constructor'], envMax: [], namesTarget: false, requested: 6939, tokens: ['99h999m'] }],
+];
+
+void describe('a window is never longer than the lowest documented cap (property)', () => {
+  void it('parseCommand gives the documented outcome, and capFor is the lowest applicable cap', (t) => {
+    const outcomes = new Map<string, number>();
+    fc.assert(
+      fc.property(scenario, (s) => {
+        const config = validateConfig(configData(s));
+        const channel = config.channels.get('C0EXAMPLE01');
+        assert.ok(channel);
+        const tokenMinutes = s.tokens.map(referenceDuration).filter((m) => m !== undefined);
+        assert.deepEqual(tokenMinutes, [s.requested], 'generator: one duration token');
+
+        const env = documentedEnv(s);
+        const cap = documentedCap(s, env);
+        const r = parseCommand(`start ${s.tokens.join(' ')}`, channel, config.limits);
+        const outcome = r.ok ? 'accepted' : r.code;
+        outcomes.set(outcome, (outcomes.get(outcome) ?? 0) + 1);
+        if (s.requested < documentedMin(s)) {
+          assert.equal(outcome, 'duration_too_short');
+        } else if (s.requested > cap) {
+          assert.equal(outcome, 'duration_too_long');
+          assert.ok(!r.ok && r.detail.includes(`${String(cap)} minutes`), 'the error text names the limit');
+        } else if (env === undefined) {
+          assert.equal(outcome, 'env_required');
+        } else {
+          assert.ok(r.ok && r.command.kind === 'start', `accepted, got ${outcome}`);
+          // Written so that a NaN cap fails: the window is the duration typed, within the floor and the cap.
+          assert.equal(r.command.duration, s.requested, 'no silent clamp');
+          assert.ok(r.command.duration >= documentedMin(s) && r.command.duration <= cap, 'within the floor and the cap');
+          assert.equal(r.command.env, env);
+        }
+        for (const e of [undefined, ...s.envs]) {
+          assert.equal(capFor(channel, config.limits, e), documentedCap(s, e), `capFor(${String(e)})`);
+        }
+      }),
+      params(PINNED),
+    );
+    t.diagnostic([...outcomes].map(([k, n]) => `${k} ${String(n)}`).join(', '));
   });
 });
