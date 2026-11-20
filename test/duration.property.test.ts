@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import fc from 'fast-check';
 import { validateConfig } from '../src/config.js';
-import { isDuration, parseDuration } from '../src/duration.js';
+import { formatDuration, isDuration, parseDuration } from '../src/duration.js';
 import { capFor, parseCommand } from '../src/grammar.js';
 
 // FC_RUNS sets the number of runs per property (default 200, about a second in all); FC_SEED replays a failure.
@@ -173,6 +173,23 @@ void describe('parseDuration equals the reference from spec 5.1 (property)', () 
         if (parseDuration(s) !== referenceDuration(s)) assert.fail(`U+${cp.toString(16).toUpperCase()}: ${JSON.stringify(s)}`);
       }
     }
+  });
+});
+
+// ---- (b) a duration the bot writes reads back as the same minutes ----
+
+// formatDuration writes the duration of an accepted window (min_duration up to a cap) into the audit line, and the
+// rate-limit window (60 minutes) into a reply. Every limit is read with parseDuration, so the values are 0 to 99h999m.
+void describe('formatDuration writes a duration of the grammar (property)', () => {
+  void it('parseDuration(formatDuration(n)) is n for every n the grammar can express', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: MAX_DURATION_MINUTES }), (n) => {
+        const text = formatDuration(n);
+        assert.equal(referenceDuration(text), n, `formatDuration(${String(n)}) is ${JSON.stringify(text)}`);
+        assert.equal(parseDuration(text), n);
+      }),
+      params(),
+    );
   });
 });
 
