@@ -60,7 +60,8 @@ function splitMessage(text: string): { head: string; message: string } {
 export function capFor(channel: ChannelConfig, limits: GrammarLimits, env: string | undefined): number {
   let cap = limits.maxDuration;
   if (channel.maxDuration !== undefined) cap = Math.min(cap, channel.maxDuration);
-  if (env !== undefined) {
+  // Own keys only: an env may be named like a property every object has (constructor, toString).
+  if (env !== undefined && Object.hasOwn(channel.envMaxDuration, env)) {
     const e = channel.envMaxDuration[env];
     if (e !== undefined) cap = Math.min(cap, e);
   }
