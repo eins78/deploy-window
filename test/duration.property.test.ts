@@ -243,8 +243,8 @@ const setup: fc.Arbitrary<Setup> = fc
       minDuration: fc.constant(minDuration),
       maxDuration: fc.option(cap, { nil: undefined }),
       channelMax: fc.option(cap, { nil: undefined }),
-      // A YAML mapping holds a key once.
-      envMax: fc.uniqueArray(fc.tuple(fc.constantFrom(...envs), cap), { maxLength: 3, selector: ([key]) => key }),
+      // Keys in any case (names are case-insensitive), so one env can have two entries; a YAML mapping holds a key once.
+      envMax: fc.uniqueArray(fc.tuple(fc.constantFrom(...envs).chain(recased), cap), { maxLength: 3, selector: ([key]) => key }),
       namedEnv: fc.option(fc.constantFrom(...envs), { nil: undefined }),
       namesTarget: fc.boolean(),
     });
@@ -318,6 +318,8 @@ const PINNED: [Scenario][] = [
   // An env named like an Object.prototype property and no env cap: the cap read the inherited function (NaN), so
   // 99h999m passed the default 4-hour cap.
   [{ ...none, envs: ['constructor'], envMax: [], namesTarget: false, requested: 6939, tokens: ['99h999m'] }],
+  // Two env_max_duration keys for one env, differing in case: the later key won, not the lower cap.
+  [{ ...none, envs: ['PROD'], envMax: [['PROD', 60], ['prod', 180]], namesTarget: false, requested: 120, tokens: ['2h'] }],
 ];
 
 void describe('a window is never longer than the lowest documented cap (property)', () => {
