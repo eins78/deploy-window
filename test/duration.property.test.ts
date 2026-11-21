@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import fc from 'fast-check';
-import { validateConfig } from '../src/config.js';
+import { ConfigInvalid, validateConfig } from '../src/config.js';
 import { formatDuration, isDuration, parseDuration } from '../src/duration.js';
 import { capFor, parseCommand } from '../src/grammar.js';
 
@@ -260,8 +260,18 @@ const setup: fc.Arbitrary<Setup> = fc
       minDuration: fc.constant(minDuration),
       maxDuration: fc.option(cap, { nil: undefined }),
       channelMax: fc.option(cap, { nil: undefined }),
-      // Keys in any case (names are case-insensitive), so one env can have two entries; a YAML mapping holds a key once.
-      envMax: fc.uniqueArray(fc.tuple(fc.constantFrom(...envs).chain(recased), cap), { maxLength: 3, selector: ([key]) => key }),
+      // Keys are lowercase (DWA-CFG-006); now and then in any case, which the config check must refuse. A YAML mapping
+      // holds a key once.
+      envMax: fc.uniqueArray(
+        fc.tuple(
+          fc.oneof(
+            { arbitrary: fc.constantFrom(...envs.map((e) => e.toLowerCase())), weight: 3 },
+            { arbitrary: fc.constantFrom(...envs).chain(recased), weight: 1 },
+          ),
+          cap,
+        ),
+        { maxLength: 3, selector: ([key]) => key },
+      ),
       namedEnv: fc.option(fc.constantFrom(...envs), { nil: undefined }),
       namesTarget: fc.boolean(),
     });
@@ -300,7 +310,10 @@ function documentedEnv(s: Setup): string | undefined {
   return s.defaultEnv;
 }
 
-/** DWA-LIM-001 defaults (5 minutes, 4 hours); DWA-CMD-006: the lowest of global, channel and the env's own cap. */
+/**
+ * DWA-LIM-001 defaults (5 minutes, 4 hours); DWA-CMD-006: the lowest of global, channel and the env's own cap. A
+ * lowercase env_max_duration key caps the env of any spelling (DWA-LIM-001).
+ */
 const documentedMin = (s: Setup) => s.minDuration ?? 5;
 function documentedCap(s: Setup, env: string | undefined): number {
   const caps = [s.maxDuration ?? 240];
@@ -335,8 +348,10 @@ const PINNED: [Scenario][] = [
   // An env named like an Object.prototype property and no env cap: the cap read the inherited function (NaN), so
   // 99h999m passed the default 4-hour cap.
   [{ ...none, envs: ['constructor'], envMax: [], namesTarget: false, requested: 6939, tokens: ['99h999m'] }],
-  // Two env_max_duration keys for one env, differing in case: the later key won, not the lower cap.
+  // Two env_max_duration keys for one env, differing in case: the later key won. Now the uppercase key is refused.
   [{ ...none, envs: ['PROD'], envMax: [['PROD', 60], ['prod', 180]], namesTarget: false, requested: 120, tokens: ['2h'] }],
+  // A lowercase key caps the env whatever its spelling: PROD gets 1h.
+  [{ ...none, envs: ['PROD'], envMax: [['prod', 60]], namesTarget: false, requested: 61, tokens: ['1h1m'] }],
 ];
 
 void describe('a window is never longer than the lowest documented cap (property)', () => {
@@ -344,6 +359,23 @@ void describe('a window is never longer than the lowest documented cap (property
     const outcomes = new Map<string, number>();
     fc.assert(
       fc.property(scenario, (s) => {
+        const upper = s.envMax.map(([key]) => key).filter((key) => key !== key.toLowerCase());
+        if (upper.length > 0) {
+          // DWA-CFG-006: a key with an uppercase letter is refused, each at its own path.
+          assert.throws(
+            () => validateConfig(configData(s)),
+            (e: unknown) => {
+              assert.ok(e instanceof ConfigInvalid, String(e));
+              for (const key of upper) {
+                const path = `channels.C0EXAMPLE01.env_max_duration.${key}`;
+                assert.ok(e.errors.some((x) => x.path === path && /lowercase/.test(x.message)), `no lowercase error at ${path}`);
+              }
+              return true;
+            },
+          );
+          outcomes.set('config_refused', (outcomes.get('config_refused') ?? 0) + 1);
+          return;
+        }
         const config = validateConfig(configData(s));
         const channel = config.channels.get('C0EXAMPLE01');
         assert.ok(channel);
