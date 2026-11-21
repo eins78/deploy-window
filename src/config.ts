@@ -224,13 +224,14 @@ function validateChannel(
   for (const [key, value] of Object.entries(raw.env_max_duration)) {
     const env = envByLower.get(key.toLowerCase());
     const minutes = parseDuration(value);
-    if (env === undefined) {
+    // Lowercase keys only, so no two keys can name one env (DWA-CFG-006); a key caps the env of any spelling.
+    if (key !== key.toLowerCase()) {
+      errors.push({ path: at(`env_max_duration.${key}`), message: `env_max_duration keys are lowercase: write "${key.toLowerCase()}"` });
+    } else if (env === undefined) {
       errors.push({ path: at(`env_max_duration.${key}`), message: `"${key}" is not an environment of this channel` });
     } else if (minutes !== undefined) {
       if (minutes < minDuration) errors.push({ path: at(`env_max_duration.${key}`), message: 'below min_duration' });
-      // Keys are case-insensitive, so two keys can name one env: the lower cap applies (DWA-CMD-006).
-      const prev = Object.hasOwn(envMaxDuration, env) ? envMaxDuration[env] : undefined;
-      envMaxDuration[env] = prev === undefined ? minutes : Math.min(prev, minutes);
+      envMaxDuration[env] = minutes;
     }
   }
   if (maxDuration !== undefined && maxDuration > globalMax) {
