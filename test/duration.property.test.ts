@@ -1,5 +1,5 @@
-// covers: DWA-GEN-007, DWA-CMD-005, 006, DWA-LIM-001, DWA-ENV-002 (T-GEN-7, T-CMD-3, T-CMD-4), as property tests
-// against a reference written from spec 5.1
+// covers: DWA-GEN-007, DWA-CMD-005, 006, DWA-LIM-001, DWA-ENV-002, DWA-AUD-001 (T-GEN-7, T-CMD-3, T-CMD-4, T-LIM-1,
+// T-AUD-1 duration), as property tests against a reference written from spec 5.1
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import fc from 'fast-check';
