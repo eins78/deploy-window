@@ -32,7 +32,7 @@ channels:
     select: all                           # all | explicit
     on_partial: rollback                  # rollback (default) | keep
     max_duration: 2h
-    env_max_duration: {PROD: 1h}
+    env_max_duration: {prod: 1h}          # keys in lowercase; caps PROD
     targets:
       api:
         INTEG:

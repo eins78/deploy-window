@@ -17,9 +17,10 @@ export function isDuration(text: string): boolean {
   return parseDuration(text) !== undefined;
 }
 
+/** Writes minutes in the same syntax. From 100 hours on, hours stay at 99 (the syntax has two digits): 6000 is 99h60m. */
 export function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const h = Math.min(99, Math.floor(minutes / 60));
+  const m = minutes - h * 60;
   if (h === 0) return `${String(m)}m`;
   if (m === 0) return `${String(h)}h`;
   return `${String(h)}h${String(m)}m`;
